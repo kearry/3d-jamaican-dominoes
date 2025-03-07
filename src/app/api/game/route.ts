@@ -1,46 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-
-// Mock database for game state (in a real app, this would be a database)
-let games: any[] = [];
+import prisma from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession();
   
   // Require authentication
-  if (!session?.user) {
-    return NextResponse.json(
-      { error: "Authentication required" },
-      { status: 401 }
-    );
-  }
-  
-  // Get game ID from query parameter
-  const { searchParams } = new URL(request.url);
-  const gameId = searchParams.get("id");
-  
-  if (gameId) {
-    // Return specific game
-    const game = games.find((g) => g.id === gameId);
-    if (!game) {
-      return NextResponse.json({ error: "Game not found" }, { status: 404 });
-    }
-    return NextResponse.json(game);
-  }
-  
-  // Return list of games for the user
-  const userGames = games.filter(
-    (game) => game.players.some((p: any) => p.id === session.user.id)
-  );
-  
-  return NextResponse.json(userGames);
-}
-
-export async function POST(request: NextRequest) {
-  const session = await getServerSession();
-  
-  // Require authentication
-  if (!session?.user) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Authentication required" },
       { status: 401 }
@@ -48,36 +14,183 @@ export async function POST(request: NextRequest) {
   }
   
   try {
+    // Get game ID from query parameter
+    const { searchParams } = new URL(request.url);
+    const gameId = searchParams.get("id");
+    
+    // Get the user from the database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+    
+    // If gameId provided, return specific game
+    if (gameId) {
+      const game = await prisma.game.findUnique({
+        where: { id: gameId },
+        include: {
+          players: true,
+          rounds: {
+            include: {
+              winner: true,
+            },
+          },
+        },
+      });
+      
+      if (!game) {
+        return NextResponse.json(
+          { error: "Game not found" },
+          { status: 404 }
+        );
+      }
+      
+      // Check if user is part of the game
+      const isPlayerInGame = game.players.some(
+        (player) => player.userId === user.id
+      );
+      
+      if (!isPlayerInGame && game.ownerId !== user.id) {
+        return NextResponse.json(
+          { error: "You don't have access to this game" },
+          { status: 403 }
+        );
+      }
+      
+      // Parse game state if it exists
+      let parsedGameState = null;
+      if (game.gameState) {
+        try {
+          parsedGameState = JSON.parse(game.gameState);
+        } catch (e) {
+          console.error("Error parsing game state:", e);
+        }
+      }
+      
+      // Parse player hands
+      const parsedPlayers = game.players.map((player) => ({
+        ...player,
+        hand: player.hand ? JSON.parse(player.hand) : [],
+      }));
+      
+      return NextResponse.json({
+        ...game,
+        gameState: parsedGameState,
+        players: parsedPlayers,
+      });
+    }
+    
+    // Return list of games for the user
+    const games = await prisma.game.findMany({
+      where: {
+        OR: [
+          { ownerId: user.id },
+          {
+            players: {
+              some: {
+                userId: user.id,
+              },
+            },
+          },
+        ],
+      },
+      include: {
+        players: true,
+        rounds: true,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+    
+    return NextResponse.json(games);
+  } catch (error) {
+    console.error("Error in GET /api/game:", error);
+    return NextResponse.json(
+      { error: "An error occurred while processing your request" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const session = await getServerSession();
+  
+  // Require authentication
+  if (!session?.user?.email) {
+    return NextResponse.json(
+      { error: "Authentication required" },
+      { status: 401 }
+    );
+  }
+  
+  try {
+    // Get the user from the database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+    
     const data = await request.json();
     
-    // Create a new game with the user as the host
-    const newGame = {
-      id: `game_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      hostId: session.user.id,
-      status: "waiting", // waiting, playing, finished
-      players: [
-        {
-          id: session.user.id,
-          name: session.user.name || "Player 1",
-          dominoes: [],
-          isAI: false,
-        },
-        // Add AI players by default
-        { id: "ai-1", name: "AI Player 1", dominoes: [], isAI: true },
-        { id: "ai-2", name: "AI Player 2", dominoes: [], isAI: true },
-        { id: "ai-3", name: "AI Player 3", dominoes: [], isAI: true },
-      ],
-      ...data,
+    // Create initial game state
+    const initialGameState = {
+      dominoChain: [],
+      leftEnd: -1,
+      rightEnd: -1,
+      currentPlayer: 0,
+      gameStarted: false,
+      passCount: 0,
+      roundEnded: false,
+      double6Played: false,
+      gamePhase: "setup",
     };
     
-    games.push(newGame);
+    // Create a new game in the database
+    const game = await prisma.game.create({
+      data: {
+        ownerId: user.id,
+        status: "waiting",
+        gameState: JSON.stringify(initialGameState),
+        players: {
+          create: [
+            // Human player
+            { 
+              userId: user.id,
+              isAI: false,
+              hand: JSON.stringify([]),
+            },
+            // AI players
+            { isAI: true, hand: JSON.stringify([]) },
+            { isAI: true, hand: JSON.stringify([]) },
+            { isAI: true, hand: JSON.stringify([]) },
+          ],
+        },
+      },
+      include: {
+        players: true,
+        rounds: true,
+      },
+    });
     
-    return NextResponse.json(newGame, { status: 201 });
+    return NextResponse.json(game, { status: 201 });
   } catch (error) {
+    console.error("Error in POST /api/game:", error);
     return NextResponse.json(
-      { error: "Invalid request data" },
-      { status: 400 }
+      { error: "An error occurred while processing your request" },
+      { status: 500 }
     );
   }
 }
@@ -86,7 +199,7 @@ export async function PUT(request: NextRequest) {
   const session = await getServerSession();
   
   // Require authentication
-  if (!session?.user) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Authentication required" },
       { status: 401 }
@@ -94,8 +207,20 @@ export async function PUT(request: NextRequest) {
   }
   
   try {
+    // Get the user from the database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+    
     const data = await request.json();
-    const { gameId } = data;
+    const { gameId, gameState, status } = data;
     
     if (!gameId) {
       return NextResponse.json(
@@ -105,36 +230,51 @@ export async function PUT(request: NextRequest) {
     }
     
     // Find the game
-    const gameIndex = games.findIndex((g) => g.id === gameId);
-    if (gameIndex === -1) {
-      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    const game = await prisma.game.findUnique({
+      where: { id: gameId },
+      include: {
+        players: true,
+      },
+    });
+    
+    if (!game) {
+      return NextResponse.json(
+        { error: "Game not found" },
+        { status: 404 }
+      );
     }
     
-    // Check if user is in the game
-    const game = games[gameIndex];
-    const playerInGame = game.players.some((p: any) => p.id === session.user.id);
+    // Check if user has permission to update
+    const isPlayerInGame = game.players.some(
+      (player) => player.userId === user.id
+    );
     
-    if (!playerInGame && game.hostId !== session.user.id) {
+    if (!isPlayerInGame && game.ownerId !== user.id) {
       return NextResponse.json(
-        { error: "You are not authorized to update this game" },
+        { error: "You don't have permission to update this game" },
         { status: 403 }
       );
     }
     
     // Update the game
-    const updatedGame = {
-      ...game,
-      ...data,
-      id: gameId, // Ensure ID doesn't change
-    };
-    
-    games[gameIndex] = updatedGame;
+    const updatedGame = await prisma.game.update({
+      where: { id: gameId },
+      data: {
+        status: status || game.status,
+        gameState: gameState ? JSON.stringify(gameState) : game.gameState,
+      },
+      include: {
+        players: true,
+        rounds: true,
+      },
+    });
     
     return NextResponse.json(updatedGame);
   } catch (error) {
+    console.error("Error in PUT /api/game:", error);
     return NextResponse.json(
-      { error: "Invalid request data" },
-      { status: 400 }
+      { error: "An error occurred while processing your request" },
+      { status: 500 }
     );
   }
 }
