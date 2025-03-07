@@ -13,13 +13,16 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 - Four-player support with AI opponents
 - Game state management and validation
 - Debug mode for development and testing
+- **Authentication** with NextAuth.js (GitHub, Google, and Credentials providers)
+- **API routes** for game state management and multiplayer support
 
 ## Technology Stack
 
 - **Frontend Framework**: Next.js 14
 - **3D Rendering**: Three.js with React Three Fiber
 - **UI Components**: React with Tailwind CSS
-- **Authentication**: NextAuth.js
+- **Authentication**: NextAuth.js (multiple providers)
+- **API**: Next.js API Routes
 
 ## Getting Started
 
@@ -31,37 +34,44 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 ### Installation
 
 1. Clone the repository:
-
    ```
-   git clone https://github.com/yourusername/3d-domino-game.git
-   cd 3d-domino-game
+   git clone https://github.com/kearry/3d-jamaican-dominoes.git
+   cd 3d-jamaican-dominoes
    ```
 
 2. Install dependencies:
-
    ```
    npm install
    # or
    yarn install
    ```
 
-3. Start the development server:
+3. Set up environment variables:
+   ```
+   cp .env.example .env.local
+   ```
+   Edit `.env.local` to add your authentication provider details.
 
+4. Start the development server:
    ```
    npm run dev
    # or
    yarn dev
    ```
 
-4. Open your browser and navigate to `http://localhost:3000`
+5. Open your browser and navigate to `http://localhost:3000`
 
 ## Project Structure
 
 ```
-3d-domino-game/
+3d-jamaican-dominoes/
 ├── public/           # Static assets
 ├── src/
 │   ├── app/          # Next.js app directory
+│   │   ├── api/      # API routes
+│   │   │   ├── auth/ # Authentication API
+│   │   │   └── game/ # Game state API
+│   │   └── login/    # Login page
 │   ├── components/   # React components
 │   │   ├── Domino.tsx           # 3D domino component
 │   │   ├── DominoChain.tsx      # Chain of played dominoes
@@ -69,11 +79,34 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 │   │   ├── PlayerHand.tsx       # Player's hand component
 │   │   └── Table.tsx            # 3D table component
 │   ├── context/      # React context for game state
+│   ├── lib/          # Utility libraries and services
 │   ├── types/        # TypeScript type definitions
 │   └── utils/        # Utility functions
-├── .env              # Environment variables
+├── .env.example      # Example environment variables
 └── next.config.js    # Next.js configuration
 ```
+
+## Authentication
+
+The game supports multiple authentication methods:
+
+- **GitHub OAuth**: Sign in with your GitHub account
+- **Google OAuth**: Sign in with your Google account
+- **Credentials**: Username/password authentication (demo account available)
+
+To configure authentication:
+
+1. Create OAuth applications in GitHub and/or Google developer consoles
+2. Add the client IDs and secrets to your `.env.local` file
+3. Set a secure `NEXTAUTH_SECRET` for session encryption
+
+## API Routes
+
+The game includes API routes for managing game state:
+
+- `/api/auth/*`: NextAuth.js authentication endpoints
+- `/api/game`: Endpoints for creating, retrieving, and updating games
+- `/api/game/move`: Endpoints for making moves in a game (playing dominoes, passing)
 
 ## Game Rules
 
