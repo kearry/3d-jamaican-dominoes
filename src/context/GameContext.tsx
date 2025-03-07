@@ -1,11 +1,13 @@
+// src/context/GameContext.tsx
+
 'use client';
 
 import React, {
   createContext,
   useContext,
   useState,
-  useCallback,
   useEffect,
+  useCallback,
 } from 'react';
 import {
   GameState,
@@ -15,8 +17,10 @@ import {
   GamePhase,
   DominoState,
 } from '../types/gameTypes';
-import { GameAPI } from '@/lib/api';
-import { useSession } from 'next-auth/react';
+import { shuffleDominoes, dealDominoes, validateDominoPlacement, prepareDominoForPlacement } from '@/utils/dominoUtils';
+import { isValidDominoChain } from '@/utils/validateDominoChain';
+import { debugGameState, analyzePlayableDominoes, capturePageState } from '@/utils/debugUtils';
+import * as apiService from '@/utils/apiService';
 
 const initialState: GameState = {
   players: [],
@@ -42,38 +46,40 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [state, setState] = useState<GameState>(initialState);
-  const [currentGameId, setCurrentGameId] = useState<string | null>(null);
-  const { data: session } = useSession();
+  const [gameId, setGameId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load game data if we have a game ID
-  useEffect(() => {
-    if (currentGameId && session) {
-      loadGame(currentGameId);
-    }
-  }, [currentGameId, session]);
-
-  // Load a game from the API
-  const loadGame = async (gameId: string) => {
-    try {
-      const gameData = await GameAPI.getGame(gameId);
-      setState(gameData);
-    } catch (error) {
-      console.error('Failed to load game:', error);
-    }
-  };
-
+  // Start a new game via API
   const startGame = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
     try {
-      // Create a new game via the API
-      const newGame = await GameAPI.createGame();
-      setCurrentGameId(newGame.id);
+      const response = await apiService.startGame();
+      setGameId(response.game.id);
+      
+      // Initialize local state based on API response
+      const players = response.playerHands.map((hand: Domino[], index: number) => ({
+        id: index,
+        name: `Player ${index + 1}`,
+        dominoes: hand,
+        isAI: index !== 0,
+      }));
+      
       setState({
-        ...newGame,
+        ...initialState,
+        players,
+        currentPlayer: response.startingPlayerIndex,
+        dominoes: response.dominoes,
         gameStarted: true,
-        gamePhase: GamePhase.Play
+        gamePhase: GamePhase.Play,
+        startingPlayerId: response.startingPlayerIndex,
       });
-    } catch (error) {
-      console.error('Failed to start game:', error);
+    } catch (err) {
+      console.error('Failed to start game:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start game');
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -144,8 +150,14 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const playDomino = useCallback(
     async (domino: Domino, end: 'left' | 'right' | 'any') => {
-      if (!currentGameId) return;
-
+      if (!gameId) {
+        console.error("Cannot play domino: no active game");
+        return;
+      }
+      
+      setIsLoading(true);
+      setError(null);
+      
       try {
         // Find the domino index in the player's hand
         const currentPlayer = state.players[state.currentPlayer];
@@ -154,31 +166,134 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
         );
 
         if (dominoIndex === -1) {
-          console.error("Domino not found in player's hand");
-          return;
+          throw new Error("Domino not found in player's hand");
         }
 
-        // Call the API to make the move
-        const updatedGame = await GameAPI.playDomino(currentGameId, dominoIndex, end);
-        setState(updatedGame);
-      } catch (error) {
-        console.error('Failed to play domino:', error);
+        // Call API to play the domino
+        await apiService.playDomino(gameId, dominoIndex, end as 'left' | 'right');
+        
+        // Update local state immediately for better UX
+        setState((prevState: GameState) => {
+          const isDoubleSix = domino.leftPips === 6 && domino.rightPips === 6;
+          const double6Played = prevState.double6Played || isDoubleSix;
+
+          // Validate the move
+          if (!validateDominoPlacement(domino, end, prevState.dominoChain)) {
+            console.error("Invalid domino placement!");
+            return prevState;
+          }
+
+          const updatedPlayers = prevState.players.map((player, index) => {
+            if (index === prevState.currentPlayer) {
+              return {
+                ...player,
+                dominoes: player.dominoes.filter(
+                  (d) =>
+                    !(
+                      d.leftPips === domino.leftPips &&
+                      d.rightPips === domino.rightPips
+                    )
+                ),
+              };
+            }
+            return player;
+          });
+
+          // Prepare the domino (potentially flip it) for placement
+          const preparedDomino = prepareDominoForPlacement(domino, end, prevState.dominoChain);
+
+          // Calculate position and rotation for the domino
+          const { position, rotation } = calculateDominoPositionAndRotation(
+            preparedDomino,
+            prevState.dominoChain,
+            end
+          );
+
+          // Create a copy of the domino with updated position and rotation
+          const updatedDomino = {
+            ...preparedDomino,
+            position,
+            rotation,
+          };
+
+          // Add the domino to the chain
+          const newChain = [...prevState.dominoChain];
+          if (end === 'left' || (end === 'any' && prevState.dominoChain.length === 0)) {
+            newChain.unshift(updatedDomino);
+          } else {
+            newChain.push(updatedDomino);
+          }
+
+          if (!isValidDominoChain(newChain)) {
+            console.error('Invalid domino chain!', newChain);
+            return prevState;
+          }
+
+          const nextPlayer =
+            (prevState.currentPlayer + 1) % prevState.players.length;
+
+          return {
+            ...prevState,
+            players: updatedPlayers,
+            dominoChain: newChain,
+            leftEnd: newChain[0].leftPips,
+            rightEnd: newChain[newChain.length - 1].rightPips,
+            currentPlayer: nextPlayer,
+            passCount: 0,
+            double6Played,
+          };
+        });
+      } catch (err) {
+        console.error('Failed to play domino:', err);
+        setError(err instanceof Error ? err.message : 'Failed to play domino');
+      } finally {
+        setIsLoading(false);
       }
     },
-    [currentGameId, state.players, state.currentPlayer]
+    [gameId, state]
   );
 
   const passTurn = useCallback(async () => {
-    if (!currentGameId) return;
-
-    try {
-      // Call the API to pass the turn
-      const updatedGame = await GameAPI.passTurn(currentGameId);
-      setState(updatedGame);
-    } catch (error) {
-      console.error('Failed to pass turn:', error);
+    if (!gameId) {
+      console.error("Cannot pass turn: no active game");
+      return;
     }
-  }, [currentGameId]);
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Call API to pass turn
+      await apiService.passTurn(gameId);
+      
+      // Update local state
+      setState((prevState) => {
+        const nextPlayer =
+          (prevState.currentPlayer + 1) % prevState.players.length;
+        const newPassCount = prevState.passCount + 1;
+        let roundEnded = false;
+        let roundWinner = prevState.roundWinner;
+
+        if (newPassCount >= prevState.players.length) {
+          roundEnded = true;
+          roundWinner = findWinnerOfBlockedGame(prevState.players);
+        }
+
+        return {
+          ...prevState,
+          currentPlayer: nextPlayer,
+          passCount: newPassCount,
+          roundEnded,
+          roundWinner,
+        };
+      });
+    } catch (err) {
+      console.error('Failed to pass turn:', err);
+      setError(err instanceof Error ? err.message : 'Failed to pass turn');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [gameId]);
 
   const canPlay = useCallback((state: GameState, player: Player): boolean => {
     if (state.dominoChain.length === 0) {
@@ -195,25 +310,141 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   }, []);
 
-  const resetGame = useCallback(() => {
-    setCurrentGameId(null);
-    setState(initialState);
-  }, []);
+  const debugState = useCallback(() => {
+    console.log('===== GAME STATE DEBUG =====');
+    console.log('Current Game State:', state);
+    console.log('Game ID:', gameId);
+
+    // Detailed info about domino chain
+    console.log('Domino Chain Details:');
+    if (state.dominoChain.length === 0) {
+      console.log('  Chain is empty');
+    } else {
+      state.dominoChain.forEach((domino, index) => {
+        console.log(`  [${index}] Left: ${domino.leftPips} Right: ${domino.rightPips}`);
+      });
+    }
+
+    // Check chain validity
+    console.log('Chain Valid:', isValidDominoChain(state.dominoChain));
+
+    // Current player info
+    const currentPlayer = state.players[state.currentPlayer];
+    console.log('Current Player:', currentPlayer?.name, 'ID:', state.currentPlayer);
+    console.log('Current Player Dominoes:');
+    currentPlayer?.dominoes.forEach((domino, index) => {
+      console.log(`  [${index}] Left: ${domino.leftPips} Right: ${domino.rightPips}`);
+    });
+
+    // Check playable dominoes
+    if (currentPlayer) {
+      const playableDominoes = currentPlayer.dominoes.filter(domino =>
+        validateDominoPlacement(domino, 'left', state.dominoChain) ||
+        validateDominoPlacement(domino, 'right', state.dominoChain)
+      );
+      console.log('Playable Dominoes:', playableDominoes.length);
+      playableDominoes.forEach((domino, index) => {
+        console.log(`  [${index}] Left: ${domino.leftPips} Right: ${domino.rightPips}`);
+      });
+    }
+
+    console.log('===== END DEBUG =====');
+
+    // Use our new debug utilities
+    debugGameState(state);
+
+    // Analyze the current player's options
+    if (currentPlayer) {
+      analyzePlayableDominoes(state, currentPlayer);
+    }
+
+    // Take a snapshot of the current page state
+    capturePageState();
+
+  }, [state, gameId]);
+
+  useEffect(() => {
+    const handleAITurn = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const aiPlayer = state.players[state.currentPlayer];
+      const aiMove = calculateAIMove(state, aiPlayer);
+      if (aiMove) {
+        playDomino(aiMove.domino, aiMove.end);
+      } else {
+        passTurn();
+      }
+    };
+
+    if (state.gameStarted && state.players[state.currentPlayer]?.isAI) {
+      handleAITurn();
+    }
+  }, [state, playDomino, passTurn]);
 
   return (
     <GameContext.Provider
       value={{
         state,
+        setState,
         startGame,
         playDomino,
         passTurn,
         canPlay,
-        resetGame
+        debugState,
+        isLoading,
+        error,
+        gameId,
       }}
     >
       {children}
     </GameContext.Provider>
   );
+};
+
+// Move helper functions outside the component
+const findWinnerOfBlockedGame = (players: Player[]): number => {
+  let minPips = Infinity;
+  let winner = 0;
+  players.forEach((player, index) => {
+    const totalPips = player.dominoes.reduce(
+      (sum: number, domino: Domino) =>
+        sum + domino.leftPips + domino.rightPips,
+      0
+    );
+    if (totalPips < minPips) {
+      minPips = totalPips;
+      winner = player.id;
+    }
+  });
+  return winner;
+};
+
+const calculateAIMove = (state: GameState, aiPlayer: Player) => {
+  if (state.dominoChain.length === 0) {
+    // First move must be double 6
+    const double6 = aiPlayer.dominoes.find(
+      domino => domino.leftPips === 6 && domino.rightPips === 6
+    );
+    if (double6) {
+      return { domino: double6, end: 'any' as const };
+    }
+    return null;
+  }
+
+  for (const domino of aiPlayer.dominoes) {
+    if (
+      domino.leftPips === state.leftEnd ||
+      domino.rightPips === state.leftEnd
+    ) {
+      return { domino, end: 'left' as const };
+    }
+    if (
+      domino.leftPips === state.rightEnd ||
+      domino.rightPips === state.rightEnd
+    ) {
+      return { domino, end: 'right' as const };
+    }
+  }
+  return null;
 };
 
 // Custom hook to use the GameContext
