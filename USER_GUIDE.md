@@ -1,117 +1,190 @@
-# User Guide: 3D Jamaican Dominoes
+# 3D Jamaican Dominoes - User Guide
 
-Welcome to 3D Jamaican Dominoes! This guide will help you understand how to play the game and navigate the interface.
-
-![Game Interface](screenshot.png)
+This guide will walk you through how to play 3D Jamaican Dominoes using our web application.
 
 ## Table of Contents
 
-1. [Game Overview](#game-overview)
-2. [Getting Started](#getting-started)
-3. [Game Interface](#game-interface)
-4. [How to Play](#how-to-play)
-5. [Game Rules](#game-rules)
-6. [Tips and Strategies](#tips-and-strategies)
+1. [Getting Started](#getting-started)
+2. [Game Interface](#game-interface)
+3. [Game Rules](#game-rules)
+4. [Playing the Game](#playing-the-game)
+5. [Advanced Strategies](#advanced-strategies)
+6. [Game Settings](#game-settings)
 7. [Troubleshooting](#troubleshooting)
-
-## Game Overview
-
-Jamaican Dominoes is a popular variation of the classic dominoes game, typically played with four players. The objective is to be the first player to play all your dominoes, or to have the lowest total points when the game is blocked (no more possible moves).
 
 ## Getting Started
 
-1. **Launch the Game**: Open your web browser and navigate to the game URL
-2. **Start New Game**: Click on the "New Game" button on the home page
-3. **Game Setup**: The game will automatically deal dominoes to you and three AI opponents
-4. **Begin Play**: The player with the double-six starts the game
+### Creating an Account
+
+1. Visit the application at [your-domain.com](https://your-domain.com)
+2. Click on "Sign In" in the top right corner
+3. Choose your preferred sign-in method:
+   - GitHub
+   - Google
+   - Email/Password
+4. If using Email/Password, enter your details and create an account
+5. You can also use the demo account:
+   - Email: demo@example.com
+   - Password: password
+
+### Starting a New Game
+
+1. From the dashboard, click "New Game"
+2. Select the game mode:
+   - Single Player (play against AI)
+   - Multiplayer (play with friends)
+3. For Single Player, select the difficulty level for AI opponents
+4. For Multiplayer, you can invite friends using a generated link
+5. Click "Start Game" to begin
 
 ## Game Interface
 
-### Main Game Board
+The game interface consists of several key areas:
 
-- **Center Area**: The 3D wooden table where dominoes are played
-- **Player Areas**: Your dominoes are displayed at the bottom of the screen
-- **Opponent Areas**: AI players' dominoes (face down) are displayed on the other sides
-- **Game Status**: Current player, game phase, and other information are displayed at the bottom
+### 1. The Table
+The wooden table where dominoes are played. The chain of dominoes will form here as the game progresses.
 
-### Controls
+### 2. Your Hand
+Located at the bottom of the screen, these are the dominoes you can play on your turn.
 
-- **Select Domino**: Click on a domino in your hand to select it
-- **Place Domino**: After selecting a domino, valid placement areas on the board will highlight
-- **Pass Turn**: If you cannot make a valid move, click the "Pass" button
-- **Debug Button**: Provides access to game state information (for development)
+### 3. Opponent Hands
+You can see how many dominoes your opponents have, but not their values.
 
-## How to Play
+### 4. Game Controls
+- **Play**: Click on a domino in your hand, then click on a valid position on the table
+- **Pass**: If you cannot play, click the "Pass" button
+- **Menu**: Access game settings, quit, or save the game
 
-### Starting the Game
-
-1. The game automatically identifies the player with the double-six (6-6) domino
-2. This player must play the double-six as the first move
-3. Play then proceeds clockwise around the table
-
-### Taking Your Turn
-
-When it's your turn:
-
-1. Select a domino from your hand that has a number matching one of the end numbers on the board
-2. Place the domino on the appropriate end of the chain
-3. If you cannot make a valid move, click "Pass"
-
-### Game End
-
-The game ends when:
-
-- One player plays all their dominoes (winner)
-- The game is blocked (no player can make a valid move)
-  - In this case, the player with the lowest total pip count wins
+### 5. Game Information
+- Current player's turn
+- Score
+- Number of dominoes in the boneyard (if any)
 
 ## Game Rules
 
-### Basic Rules
+### Basic Rules of Jamaican Dominoes
 
-1. **Standard Domino Set**: The game uses a standard set of 28 dominoes (double-six set)
-2. **Four Players**: The game is played with four players
-3. **Starting**: The player with the double-six starts
-4. **Matching Numbers**: Dominoes must be placed so that one end matches a number at the end of the chain
-5. **Doubles**: Double dominoes (e.g., 6-6, 5-5) are placed perpendicular to the chain
-6. **Passing**: If you cannot make a valid move, you must pass
-7. **Winning**: The first player to play all their dominoes wins
+1. **Setup**:
+   - Each player receives 7 dominoes
+   - The player with the double-six starts the game
+   - If no player has the double-six, the player with the highest double plays first
 
-### Jamaican Variations
+2. **Gameplay**:
+   - Players take turns clockwise
+   - Players must match one end of their domino to an open end of the domino chain
+   - If a player cannot play, they must pass their turn
+   - Double dominoes are placed perpendicular to the chain
 
-- Double dominoes are placed perpendicular to create a branch in the chain
-- The next domino after a double can be played on any of the three open ends
+3. **Scoring**:
+   - The first player to play all their dominoes wins the round
+   - The winner scores points equal to the sum of all pips on opponents' remaining dominoes
+   - Games are typically played to 100 or 200 points
 
-## Tips and Strategies
+### Special Rules in this Implementation
 
-### For Beginners
+1. **Team Play**:
+   - Players sitting opposite each other form a team
+   - Teams share their score
+   - Strategy involves helping your partner
 
-1. **Play high-value dominoes early**: Try to play your highest value dominoes early in the game
-2. **Keep track of played dominoes**: Pay attention to which numbers have been played
-3. **Block opponents**: If possible, play dominoes that make it difficult for the next player
+2. **Blocking**:
+   - If all players pass consecutively and the boneyard is empty, the round ends
+   - The player or team with the lowest sum of pips in their hand wins
 
-### Advanced Strategies
+## Playing the Game
 
-1. **Count the dominoes**: Keep track of how many of each number has been played
-2. **Create forced passes**: Try to make both ends of the chain show the same number that you know opponents don't have
-3. **Save doubles**: Sometimes it's strategic to hold onto doubles for later in the game
+### Making a Move
+
+1. When it's your turn, select a domino from your hand by clicking on it
+2. The game will highlight valid positions on the table where you can play
+3. Click on a valid position to place your domino
+4. If you're playing a double, the game will automatically place it perpendicular
+
+### Understanding the Chain
+
+The domino chain has two ends where new dominoes can be played:
+
+1. **Matching Numbers**: Your domino must have a matching number on at least one of its halves
+2. **Double Branching**: When a double is played, it creates a branch point with three possible places to play
+
+### Using Game Assists
+
+The game provides several assists to help you play:
+
+1. **Highlighting**: Valid moves are highlighted when you select a domino
+2. **Auto-Pass**: The game will notify you if you have no valid moves
+3. **Undo**: You can undo your last move in single-player mode
+
+## Advanced Strategies
+
+### Counting Dominoes
+
+- Keep track of which dominoes have been played
+- Count how many of each number (0-6) has been played
+- This helps predict what opponents might have
+
+### Blocking Opponents
+
+- If you notice an opponent is running low on dominoes, try to block their likely moves
+- Play dominoes that make it difficult for the next player to play
+
+### Team Strategies
+
+When playing in teams:
+
+1. **Open for Partner**: Try to create opportunities for your partner to play
+2. **Block Opponents**: Focus on blocking the opposing team
+3. **Communication**: While direct communication about dominoes is not allowed, watch your partner's plays for clues
+
+## Game Settings
+
+Access game settings from the menu to customize your experience:
+
+### Visual Settings
+
+- **Camera Angle**: Adjust the view of the table
+- **Domino Colors**: Customize the colors of the dominoes and spots
+- **Table Texture**: Change the appearance of the table
+
+### Gameplay Settings
+
+- **Sound Effects**: Toggle game sounds on/off
+- **Animations**: Adjust animation speed or turn off for faster gameplay
+- **Game Assists**: Toggle highlighting and other gameplay assists
+
+### Account Settings
+
+- **Profile**: Change your username or avatar
+- **Statistics**: View your win/loss record and other stats
+- **Preferences**: Save your preferred game settings
 
 ## Troubleshooting
 
 ### Common Issues
 
-- **Game Won't Start**: Try refreshing the page
-- **Cannot Place Domino**: Ensure you're selecting a valid placement location
-- **Visual Glitches**: If 3D elements don't render correctly, check that your browser supports WebGL
+1. **Game Not Loading**:
+   - Ensure your browser is up-to-date
+   - Try refreshing the page
+   - Check your internet connection
 
-### System Requirements
+2. **Cannot Make a Move**:
+   - Verify it's your turn (indicated by the highlight)
+   - Ensure you have a valid domino to play
+   - If stuck, use the "Help" button for guidance
 
-- **Browser**: Modern browser with WebGL support (Chrome, Firefox, Safari, Edge)
-- **Internet**: Stable internet connection
-- **Input**: Mouse/trackpad for selecting and placing dominoes
+3. **Graphical Issues**:
+   - Try lowering the graphics quality in settings
+   - Update your graphics drivers
+   - Use a different browser
+
+### Contacting Support
+
+If you encounter persistent issues:
+
+1. Visit our support page at [support.your-domain.com](https://support.your-domain.com)
+2. Email us at support@your-domain.com
+3. Join our Discord community for real-time help
 
 ---
 
-We hope you enjoy playing 3D Jamaican Dominoes! For technical support or to report bugs, please see the README file for contact information.
-
-*Happy domino playing!*
+We hope you enjoy playing 3D Jamaican Dominoes! If you have suggestions for improving the game, please let us know through the feedback form in the game menu.
