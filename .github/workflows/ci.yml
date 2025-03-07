@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Setup Prisma
+        run: npx prisma generate
+      
+      - name: Lint
+        run: npm run lint
+        
+      - name: Check types
+        run: npx tsc --noEmit
+      
+      - name: Run tests
+        run: npm test
+        
+      - name: Build
+        run: npm run build
+
+  # Add optional job for deployment if needed
+  # deploy:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/main'
+  #   
+  #   steps:
+  #     - name: Deploy to production
+  #       # Add deployment steps here
