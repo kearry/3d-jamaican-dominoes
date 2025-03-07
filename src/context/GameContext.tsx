@@ -5,6 +5,7 @@ import React, {
   useContext,
   useState,
   useCallback,
+  useEffect,
 } from 'react';
 import {
   GameState,
@@ -14,6 +15,8 @@ import {
   GamePhase,
   DominoState,
 } from '../types/gameTypes';
+import { GameAPI } from '@/lib/api';
+import { useSession } from 'next-auth/react';
 
 const initialState: GameState = {
   players: [],
@@ -39,15 +42,39 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [state, setState] = useState<GameState>(initialState);
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null);
+  const { data: session } = useSession();
 
-  const startGame = useCallback(() => {
-    // Implementation for starting a game would go here
-    // Creates shuffled dominoes and deals them to players
-    setState({
-      ...initialState,
-      gameStarted: true,
-      gamePhase: GamePhase.Play
-    });
+  // Load game data if we have a game ID
+  useEffect(() => {
+    if (currentGameId && session) {
+      loadGame(currentGameId);
+    }
+  }, [currentGameId, session]);
+
+  // Load a game from the API
+  const loadGame = async (gameId: string) => {
+    try {
+      const gameData = await GameAPI.getGame(gameId);
+      setState(gameData);
+    } catch (error) {
+      console.error('Failed to load game:', error);
+    }
+  };
+
+  const startGame = useCallback(async () => {
+    try {
+      // Create a new game via the API
+      const newGame = await GameAPI.createGame();
+      setCurrentGameId(newGame.id);
+      setState({
+        ...newGame,
+        gameStarted: true,
+        gamePhase: GamePhase.Play
+      });
+    } catch (error) {
+      console.error('Failed to start game:', error);
+    }
   }, []);
 
   // Calculate position and rotation based on where in the chain it's placed
@@ -116,25 +143,60 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const playDomino = useCallback(
-    (domino: Domino, end: 'left' | 'right' | 'any') => {
-      // Implementation for playing a domino would go here
-      // This would include validating the move, updating the game state, etc.
-      console.log('Playing domino', domino, 'at end', end);
+    async (domino: Domino, end: 'left' | 'right' | 'any') => {
+      if (!currentGameId) return;
+
+      try {
+        // Find the domino index in the player's hand
+        const currentPlayer = state.players[state.currentPlayer];
+        const dominoIndex = currentPlayer.dominoes.findIndex(
+          d => d.leftPips === domino.leftPips && d.rightPips === domino.rightPips
+        );
+
+        if (dominoIndex === -1) {
+          console.error("Domino not found in player's hand");
+          return;
+        }
+
+        // Call the API to make the move
+        const updatedGame = await GameAPI.playDomino(currentGameId, dominoIndex, end);
+        setState(updatedGame);
+      } catch (error) {
+        console.error('Failed to play domino:', error);
+      }
     },
-    []
+    [currentGameId, state.players, state.currentPlayer]
   );
 
-  const passTurn = useCallback(() => {
-    // Implementation for passing a turn would go here
-    console.log('Passing turn');
-  }, []);
+  const passTurn = useCallback(async () => {
+    if (!currentGameId) return;
+
+    try {
+      // Call the API to pass the turn
+      const updatedGame = await GameAPI.passTurn(currentGameId);
+      setState(updatedGame);
+    } catch (error) {
+      console.error('Failed to pass turn:', error);
+    }
+  }, [currentGameId]);
 
   const canPlay = useCallback((state: GameState, player: Player): boolean => {
-    // Implementation for checking if a player can play would go here
-    return true;
+    if (state.dominoChain.length === 0) {
+      return player.dominoes.some(
+        (domino) => domino.leftPips === 6 && domino.rightPips === 6
+      );
+    }
+    return player.dominoes.some(
+      (domino) =>
+        domino.leftPips === state.leftEnd ||
+        domino.rightPips === state.leftEnd ||
+        domino.leftPips === state.rightEnd ||
+        domino.rightPips === state.rightEnd
+    );
   }, []);
 
   const resetGame = useCallback(() => {
+    setCurrentGameId(null);
     setState(initialState);
   }, []);
 
