@@ -1,280 +1,180 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import prisma from "@/lib/prisma";
+// src/app/api/game/route.ts
+import { NextResponse } from 'next/server';
+import { getServerSession } from "next-auth/next";
+import prisma from '@/lib/prisma';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { initializeGame, playDomino, passTurn } from '@/lib/serverGameLogic';
 
-export async function GET(request: NextRequest) {
-  const session = await getServerSession();
-  
-  // Require authentication
-  if (!session?.user?.email) {
-    return NextResponse.json(
-      { error: "Authentication required" },
-      { status: 401 }
-    );
+// Handle GET requests to /api/game
+export async function GET(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  
+
   try {
-    // Get game ID from query parameter
-    const { searchParams } = new URL(request.url);
-    const gameId = searchParams.get("id");
-    
-    // Get the user from the database
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
-    
-    // If gameId provided, return specific game
-    if (gameId) {
-      const game = await prisma.game.findUnique({
-        where: { id: gameId },
-        include: {
-          players: true,
-          rounds: {
-            include: {
-              winner: true,
-            },
-          },
-        },
-      });
-      
-      if (!game) {
-        return NextResponse.json(
-          { error: "Game not found" },
-          { status: 404 }
-        );
-      }
-      
-      // Check if user is part of the game
-      const isPlayerInGame = game.players.some(
-        (player) => player.userId === user.id
-      );
-      
-      if (!isPlayerInGame && game.ownerId !== user.id) {
-        return NextResponse.json(
-          { error: "You don't have access to this game" },
-          { status: 403 }
-        );
-      }
-      
-      // Parse game state if it exists
-      let parsedGameState = null;
-      if (game.gameState) {
-        try {
-          parsedGameState = JSON.parse(game.gameState);
-        } catch (e) {
-          console.error("Error parsing game state:", e);
-        }
-      }
-      
-      // Parse player hands
-      const parsedPlayers = game.players.map((player) => ({
-        ...player,
-        hand: player.hand ? JSON.parse(player.hand) : [],
-      }));
-      
-      return NextResponse.json({
-        ...game,
-        gameState: parsedGameState,
-        players: parsedPlayers,
-      });
-    }
-    
-    // Return list of games for the user
     const games = await prisma.game.findMany({
       where: {
         OR: [
-          { ownerId: user.id },
-          {
-            players: {
-              some: {
-                userId: user.id,
-              },
-            },
-          },
-        ],
+          { ownerId: session.user.id },
+          { players: { some: { userId: session.user.id } } }
+        ]
       },
       include: {
         players: true,
-        rounds: true,
+        rounds: {
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 1
+        }
       },
       orderBy: {
-        updatedAt: 'desc',
-      },
+        updatedAt: 'desc'
+      }
     });
-    
-    return NextResponse.json(games);
+
+    return NextResponse.json({ games });
   } catch (error) {
-    console.error("Error in GET /api/game:", error);
-    return NextResponse.json(
-      { error: "An error occurred while processing your request" },
-      { status: 500 }
-    );
+    console.error('Error fetching games:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 
-export async function POST(request: NextRequest) {
-  const session = await getServerSession();
+// Handle POST requests to /api/game
+export async function POST(req: Request) {
+  console.log("API: POST /api/game - Request received");
   
-  // Require authentication
-  if (!session?.user?.email) {
-    return NextResponse.json(
-      { error: "Authentication required" },
-      { status: 401 }
-    );
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    console.log("API: Unauthorized - No session");
+    return NextResponse.json({ 
+      error: 'Unauthorized',
+      redirectTo: '/login'
+    }, { status: 401 });
   }
   
+  let requestBody;
   try {
-    // Get the user from the database
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
+    requestBody = await req.json();
+    console.log("API: Request body parsed:", requestBody);
+  } catch (error) {
+    console.error("API: Error parsing request body:", error);
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+  
+  const { action, gameId, dominoIndex, end } = requestBody;
+  
+  try {
+    console.log(`API: Processing action '${action}'`);
     
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+    switch (action) {
+      case 'startGame':
+        console.log(`API: Starting game for user ${session.user.id}`);
+        const result = await handleStartGame(session.user.id);
+        console.log(`API: Game started successfully, ID: ${result.game?.id}`);
+        return NextResponse.json(result);
+        
+      case 'playDomino':
+        console.log(`API: Playing domino for game ${gameId}`);
+        return await handlePlayDomino(session.user.id, gameId, dominoIndex, end);
+        
+      case 'passTurn':
+        console.log(`API: Passing turn for game ${gameId}`);
+        return await handlePassTurn(session.user.id, gameId);
+        
+      default:
+        console.log(`API: Invalid action '${action}'`);
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
-    
-    const data = await request.json();
-    
-    // Create initial game state
-    const initialGameState = {
-      dominoChain: [],
-      leftEnd: -1,
-      rightEnd: -1,
-      currentPlayer: 0,
-      gameStarted: false,
-      passCount: 0,
-      roundEnded: false,
-      double6Played: false,
-      gamePhase: "setup",
-    };
-    
-    // Create a new game in the database
+  } catch (error) {
+    console.error('API: Error in game action:', error);
+    return NextResponse.json({ 
+      error: (error as Error).message || 'Unknown error occurred'
+    }, { status: 500 });
+  }
+}
+
+async function handleStartGame(userId: string) {
+  console.log("Function: handleStartGame - Creating new game");
+  
+  try {
     const game = await prisma.game.create({
       data: {
-        ownerId: user.id,
-        status: "waiting",
-        gameState: JSON.stringify(initialGameState),
+        ownerId: userId,
         players: {
           create: [
-            // Human player
-            { 
-              userId: user.id,
-              isAI: false,
-              hand: JSON.stringify([]),
-            },
-            // AI players
-            { isAI: true, hand: JSON.stringify([]) },
-            { isAI: true, hand: JSON.stringify([]) },
-            { isAI: true, hand: JSON.stringify([]) },
-          ],
-        },
+            { userId: userId }, // Human player
+            { isAI: true },     // AI player 1
+            { isAI: true },     // AI player 2
+            { isAI: true }      // AI player 3
+          ]
+        }
       },
-      include: {
-        players: true,
-        rounds: true,
-      },
+      include: { players: true }
     });
     
-    return NextResponse.json(game, { status: 201 });
+    console.log(`Game created with ID: ${game.id}, initializing...`);
+    const initializedGame = await initializeGame(game.id);
+    console.log("Game initialized successfully");
+    
+    return initializedGame;
   } catch (error) {
-    console.error("Error in POST /api/game:", error);
-    return NextResponse.json(
-      { error: "An error occurred while processing your request" },
-      { status: 500 }
-    );
+    console.error("Error in handleStartGame:", error);
+    throw error;
   }
 }
 
-export async function PUT(request: NextRequest) {
-  const session = await getServerSession();
-  
-  // Require authentication
-  if (!session?.user?.email) {
-    return NextResponse.json(
-      { error: "Authentication required" },
-      { status: 401 }
-    );
-  }
+async function handlePlayDomino(userId: string, gameId: string, dominoIndex: number, end: 'left' | 'right') {
+  console.log(`Function: handlePlayDomino - User: ${userId}, Game: ${gameId}, Index: ${dominoIndex}, End: ${end}`);
   
   try {
-    // Get the user from the database
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+    const player = await prisma.player.findFirst({
+      where: { 
+        userId: userId, 
+        gameId: gameId 
+      }
     });
     
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+    if (!player) {
+      console.log("Player not found in this game");
+      return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 });
     }
     
-    const data = await request.json();
-    const { gameId, gameState, status } = data;
+    console.log(`Found player with ID: ${player.id}, playing domino...`);
+    const result = await playDomino(gameId, player.id, dominoIndex, end);
+    console.log("Domino played successfully");
     
-    if (!gameId) {
-      return NextResponse.json(
-        { error: "Game ID is required" },
-        { status: 400 }
-      );
-    }
-    
-    // Find the game
-    const game = await prisma.game.findUnique({
-      where: { id: gameId },
-      include: {
-        players: true,
-      },
-    });
-    
-    if (!game) {
-      return NextResponse.json(
-        { error: "Game not found" },
-        { status: 404 }
-      );
-    }
-    
-    // Check if user has permission to update
-    const isPlayerInGame = game.players.some(
-      (player) => player.userId === user.id
-    );
-    
-    if (!isPlayerInGame && game.ownerId !== user.id) {
-      return NextResponse.json(
-        { error: "You don't have permission to update this game" },
-        { status: 403 }
-      );
-    }
-    
-    // Update the game
-    const updatedGame = await prisma.game.update({
-      where: { id: gameId },
-      data: {
-        status: status || game.status,
-        gameState: gameState ? JSON.stringify(gameState) : game.gameState,
-      },
-      include: {
-        players: true,
-        rounds: true,
-      },
-    });
-    
-    return NextResponse.json(updatedGame);
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("Error in PUT /api/game:", error);
-    return NextResponse.json(
-      { error: "An error occurred while processing your request" },
-      { status: 500 }
-    );
+    console.error("Error in handlePlayDomino:", error);
+    throw error;
+  }
+}
+
+async function handlePassTurn(userId: string, gameId: string) {
+  console.log(`Function: handlePassTurn - User: ${userId}, Game: ${gameId}`);
+  
+  try {
+    const player = await prisma.player.findFirst({
+      where: { 
+        userId: userId, 
+        gameId: gameId 
+      }
+    });
+    
+    if (!player) {
+      console.log("Player not found in this game");
+      return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 });
+    }
+    
+    console.log(`Found player with ID: ${player.id}, passing turn...`);
+    const result = await passTurn(gameId, player.id);
+    console.log("Turn passed successfully");
+    
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("Error in handlePassTurn:", error);
+    throw error;
   }
 }
