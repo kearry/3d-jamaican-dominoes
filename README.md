@@ -15,6 +15,7 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 - Debug mode for development and testing
 - **Authentication** with NextAuth.js (GitHub, Google, and Credentials providers)
 - **API routes** for game state management and multiplayer support
+- **Database persistence** with Prisma ORM
 
 ## Technology Stack
 
@@ -23,6 +24,7 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 - **UI Components**: React with Tailwind CSS
 - **Authentication**: NextAuth.js (multiple providers)
 - **API**: Next.js API Routes
+- **Database**: Prisma ORM with SQLite (configurable for PostgreSQL, MySQL, etc.)
 
 ## Getting Started
 
@@ -52,20 +54,27 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
    ```
    Edit `.env.local` to add your authentication provider details.
 
-4. Start the development server:
+4. Initialize the database:
+   ```
+   npx prisma migrate dev --name init
+   ```
+
+5. Start the development server:
    ```
    npm run dev
    # or
    yarn dev
    ```
 
-5. Open your browser and navigate to `http://localhost:3000`
+6. Open your browser and navigate to `http://localhost:3000`
 
 ## Project Structure
 
 ```
 3d-jamaican-dominoes/
 ├── public/           # Static assets
+├── prisma/           # Database schema and migrations
+│   └── schema.prisma # Prisma schema definition
 ├── src/
 │   ├── app/          # Next.js app directory
 │   │   ├── api/      # API routes
@@ -80,11 +89,23 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 │   │   └── Table.tsx            # 3D table component
 │   ├── context/      # React context for game state
 │   ├── lib/          # Utility libraries and services
+│   │   └── prisma.ts # Prisma client setup
 │   ├── types/        # TypeScript type definitions
 │   └── utils/        # Utility functions
 ├── .env.example      # Example environment variables
 └── next.config.js    # Next.js configuration
 ```
+
+## Database Schema
+
+The application uses Prisma ORM with the following main models:
+
+- **User**: Player accounts with authentication
+- **Game**: Represents a game session
+- **Player**: Represents a player in a game (can be AI)
+- **GameRound**: Tracks rounds within a game
+
+Game state is stored as JSON in the database, allowing for flexible representation of the domino chain and game progress.
 
 ## Authentication
 
@@ -107,6 +128,8 @@ The game includes API routes for managing game state:
 - `/api/auth/*`: NextAuth.js authentication endpoints
 - `/api/game`: Endpoints for creating, retrieving, and updating games
 - `/api/game/move`: Endpoints for making moves in a game (playing dominoes, passing)
+- `/api/user/profile`: User profile management
+- `/api/user/preferences`: User preferences management
 
 ## Game Rules
 
@@ -133,4 +156,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Three.js and React Three Fiber communities
 - NextJS team
+- Prisma team
 - All contributors to this project
