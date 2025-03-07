@@ -24,16 +24,21 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 - **UI Components**: React with Tailwind CSS
 - **Authentication**: NextAuth.js (multiple providers)
 - **API**: Next.js API Routes
-- **Database**: Prisma ORM with SQLite (configurable for PostgreSQL, MySQL, etc.)
+- **Database**: Prisma ORM with PostgreSQL
+- **Testing**: Jest and React Testing Library
+- **Containerization**: Docker
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 16.x or higher
+- Node.js 18.x or higher
 - npm or yarn package manager
+- PostgreSQL (optional if using Docker)
 
 ### Installation
+
+#### Local Development
 
 1. Clone the repository:
    ```
@@ -52,21 +57,80 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
    ```
    cp .env.example .env.local
    ```
-   Edit `.env.local` to add your authentication provider details.
+   Edit `.env.local` to add your authentication provider details and database URL.
 
 4. Initialize the database:
    ```
-   npx prisma migrate dev --name init
+   npm run db:migrate
    ```
 
-5. Start the development server:
+5. Seed the database with initial data:
+   ```
+   npm run db:seed
+   ```
+
+6. Start the development server:
    ```
    npm run dev
    # or
    yarn dev
    ```
 
-6. Open your browser and navigate to `http://localhost:3000`
+7. Open your browser and navigate to `http://localhost:3000`
+
+#### Using Docker Compose
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/kearry/3d-jamaican-dominoes.git
+   cd 3d-jamaican-dominoes
+   ```
+
+2. Create an `.env` file with your environment variables:
+   ```
+   cp .env.example .env
+   ```
+   
+3. Start the application with Docker Compose:
+   ```
+   docker-compose up -d
+   ```
+
+4. The application will be available at `http://localhost:3000`
+
+## Deployment
+
+### Vercel Deployment
+
+The easiest way to deploy this application is using Vercel:
+
+1. Push your code to GitHub
+2. Import the project in Vercel
+3. Set up the required environment variables
+4. Deploy
+
+### Docker Deployment
+
+To deploy using Docker:
+
+1. Build the Docker image:
+   ```
+   docker build -t jamaican-dominoes .
+   ```
+
+2. Run the container:
+   ```
+   docker run -p 3000:3000 -e DATABASE_URL=your_database_url -e NEXTAUTH_URL=your_app_url -e NEXTAUTH_SECRET=your_secret jamaican-dominoes
+   ```
+
+### Railway/Render/DigitalOcean Deployment
+
+This application can also be deployed to platforms like Railway, Render, or DigitalOcean App Platform:
+
+1. Push your code to GitHub
+2. Connect your repository to your chosen platform
+3. Configure environment variables
+4. Deploy
 
 ## Project Structure
 
@@ -74,7 +138,8 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 3d-jamaican-dominoes/
 ├── public/           # Static assets
 ├── prisma/           # Database schema and migrations
-│   └── schema.prisma # Prisma schema definition
+│   ├── schema.prisma # Prisma schema definition
+│   └── seed.ts       # Database seed script
 ├── src/
 │   ├── app/          # Next.js app directory
 │   │   ├── api/      # API routes
@@ -92,6 +157,13 @@ A modern web-based implementation of the classic Jamaican Dominoes game, rendere
 │   │   └── prisma.ts # Prisma client setup
 │   ├── types/        # TypeScript type definitions
 │   └── utils/        # Utility functions
+├── __tests__/        # Test files
+├── .github/          # GitHub Actions workflows
+├── docker-compose.yml # Docker Compose configuration
+├── Dockerfile        # Docker configuration
+├── jest.config.js    # Jest configuration
+├── .eslintrc.js      # ESLint configuration
+├── .prettierrc       # Prettier configuration
 ├── .env.example      # Example environment variables
 └── next.config.js    # Next.js configuration
 ```
@@ -144,9 +216,53 @@ This implementation follows traditional Jamaican dominoes rules:
 
 See the [USER_GUIDE.md](USER_GUIDE.md) for detailed gameplay instructions.
 
+## Testing
+
+The project uses Jest and React Testing Library for testing. To run tests:
+
+```
+npm test
+```
+
+For test coverage:
+
+```
+npm test -- --coverage
+```
+
+## Development
+
+### Code Quality Tools
+
+The project uses:
+- ESLint for code linting
+- Prettier for code formatting
+- TypeScript for type checking
+
+Run these checks with:
+
+```
+npm run lint
+npx tsc --noEmit
+```
+
+### CI/CD
+
+The project uses GitHub Actions for CI/CD. On every push and pull request to the main branch, the workflow:
+1. Runs linting
+2. Type checks
+3. Runs tests
+4. Builds the application
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
