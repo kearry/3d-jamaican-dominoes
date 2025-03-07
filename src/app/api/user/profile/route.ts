@@ -1,106 +1,165 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import prisma from "@/lib/prisma";
 
-// Mock user profiles (in a real app, this would be a database)
-const userProfiles: Record<string, any> = {};
+// System stores user preferences in a JSON field
+// We'll create a userPreferences table in a real application
+// For now we'll use metadata in the User model
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession();
   
   // Require authentication
-  if (!session?.user) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Authentication required" },
       { status: 401 }
     );
   }
   
-  const userId = session.user.id;
-  
-  // Get or create user profile
-  const profile = userProfiles[userId] || {
-    id: userId,
-    name: session.user.name,
-    email: session.user.email,
-    image: session.user.image,
-    gamesPlayed: 0,
-    gamesWon: 0,
-    preferences: {
-      theme: 'light',
-      notifications: true,
-      sound: true,
-    },
-    createdAt: new Date().toISOString(),
-  };
-  
-  // Store the profile if it was just created
-  if (!userProfiles[userId]) {
-    userProfiles[userId] = profile;
+  try {
+    // Get the user from the database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: {
+        games: {
+          take: 10,
+          orderBy: {
+            updatedAt: 'desc',
+          },
+        },
+      },
+    });
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+    
+    // Count games won
+    const gamesWon = await prisma.gameRound.count({
+      where: {
+        winner: {
+          userId: user.id,
+        },
+      },
+    });
+    
+    // Format user profile
+    const profile = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      image: user.image,
+      gamesPlayed: user.games.length,
+      gamesWon,
+      preferences: user.preferences ? JSON.parse(user.preferences) : {
+        theme: 'light',
+        notifications: true,
+        sound: true,
+      },
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+    
+    return NextResponse.json(profile);
+  } catch (error) {
+    console.error("Error in GET /api/user/profile:", error);
+    return NextResponse.json(
+      { error: "An error occurred while processing your request" },
+      { status: 500 }
+    );
   }
-  
-  return NextResponse.json(profile);
 }
 
 export async function PUT(request: NextRequest) {
   const session = await getServerSession();
   
   // Require authentication
-  if (!session?.user) {
+  if (!session?.user?.email) {
     return NextResponse.json(
       { error: "Authentication required" },
       { status: 401 }
     );
   }
   
-  const userId = session.user.id;
-  
   try {
     const data = await request.json();
     
-    // Make sure the user has a profile
-    if (!userProfiles[userId]) {
-      userProfiles[userId] = {
-        id: userId,
-        name: session.user.name,
-        email: session.user.email,
-        image: session.user.image,
-        gamesPlayed: 0,
-        gamesWon: 0,
-        preferences: {
-          theme: 'light',
-          notifications: true,
-          sound: true,
-        },
-        createdAt: new Date().toISOString(),
+    // Get the user from the database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+    
+    // Get current preferences
+    let preferences = user.preferences ? JSON.parse(user.preferences) : {
+      theme: 'light',
+      notifications: true,
+      sound: true,
+    };
+    
+    // Update preferences with new data
+    if (data.preferences) {
+      preferences = {
+        ...preferences,
+        ...data.preferences,
       };
     }
     
-    // Update the profile (only allowed fields)
-    const profile = userProfiles[userId];
-    const updatedProfile = {
-      ...profile,
-      name: data.name || profile.name,
-      // Don't allow overwriting certain fields
-      email: profile.email,
-      id: profile.id,
-      createdAt: profile.createdAt,
-      // Keep other fields
-      gamesPlayed: data.gamesPlayed !== undefined ? data.gamesPlayed : profile.gamesPlayed,
-      gamesWon: data.gamesWon !== undefined ? data.gamesWon : profile.gamesWon,
-      // Keep existing preferences, add new ones
-      preferences: {
-        ...profile.preferences,
-        ...(data.preferences || {}),
+    // Update user in the database
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        name: data.name || user.name,
+        preferences: JSON.stringify(preferences),
       },
+      include: {
+        games: {
+          take: 10,
+          orderBy: {
+            updatedAt: 'desc',
+          },
+        },
+      },
+    });
+    
+    // Count games won
+    const gamesWon = await prisma.gameRound.count({
+      where: {
+        winner: {
+          userId: user.id,
+        },
+      },
+    });
+    
+    // Format user profile
+    const profile = {
+      id: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      image: updatedUser.image,
+      gamesPlayed: updatedUser.games.length,
+      gamesWon,
+      preferences,
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
     };
     
-    userProfiles[userId] = updatedProfile;
-    
-    return NextResponse.json(updatedProfile);
+    return NextResponse.json(profile);
   } catch (error) {
+    console.error("Error in PUT /api/user/profile:", error);
     return NextResponse.json(
-      { error: "Invalid request data" },
-      { status: 400 }
+      { error: "An error occurred while processing your request" },
+      { status: 500 }
     );
   }
 }
